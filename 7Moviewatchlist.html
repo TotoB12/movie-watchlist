@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Shared Watchlist</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f4f4f4;
+    }
+    h2 {
+      text-align: center;
+    }
+    .controls {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    input[type=text] {
+      padding: 8px;
+      font-size: 16px;
+      width: 60%;
+    }
+    button {
+      padding: 8px 16px;
+      font-size: 16px;
+      margin-left: 5px;
+      cursor: pointer;
+    }
+    .library {
+      display: flex;
+      gap: 20px;
+      overflow-x: auto;
+    }
+    .column {
+      min-width: 300px;
+      background: #fff;
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .genre-group {
+      margin-bottom: 20px;
+    }
+    .genre-title {
+      font-weight: bold;
+      margin-bottom: 10px;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 5px;
+    }
+    .series-group {
+      margin-top: 10px;
+      background: #eee;
+      padding: 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .series-items {
+      display: none;
+      margin-top: 10px;
+    }
+    .item {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    .poster {
+      width: 100%;
+      max-width: 150px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+    }
+    .remove-btn {
+      float: right;
+      background: red;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .status-select {
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Shared Movie & TV Show Watchlist</h2>
+  <div class="controls">
+    <input type="text" id="movieInput" placeholder="Enter a series, movie, or TV show...">
+    <button onclick="addMovie()">Add to Watchlist</button>
+    <p id="status" style="color:red;"></p>
+  </div>
+  <div class="library">
+    <div class="column" id="moviesColumn">
+      <h3>Movies</h3>
+    </div>
+    <div class="column" id="tvShowsColumn">
+      <h3>TV Shows</h3>
+    </div>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+  <script>
+    // Your Firebase config:
+    const firebaseConfig = {
+      apiKey: "AIzaSyBauOe7P5HU5ng2UaXGTsULkPrxYIgHSOc",
+      authDomain: "movie-watchlist-36d57.firebaseapp.com",
+      projectId: "movie-watchlist-36d57",
+      storageBucket: "movie-watchlist-36d57.appspot.com",
+      messagingSenderId: "338935572505",
+      appId: "1:338935572505:web:1f162c7cf58a8e6e28a288",
+      measurementId: "G-LT6MX3W7P0"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const apiKey = "95dea636";
+
+    const movieInput = document.getElementById("movieInput");
+    const moviesColumn = document.getElementById("moviesColumn");
+    const tvShowsColumn = document.getElementById("tvShowsColumn");
+    const statusEl = document.getElementById("status");
+
+    // Hardcoded franchise IMDb IDs:
+    const franchises = {
+      "harry potter": [
+        "tt0241527", // Philosopher's Stone
+        "tt0295297", // Chamber of Secrets
+        "tt0304141", // Prisoner of Azkaban
+        "tt0373889", // Goblet of Fire
+        "tt0417741", // Order of the Phoenix
+        "tt0435761", // Half-Blood Prince
+        "tt0926084", // Deathly Hallows Part 1
+        "tt1201607"  // Deathly Hallows Part 2
+      ],
+      "narnia": [
+        "tt0363771", // The Lion, the Witch and the Wardrobe
+        "tt0437076", // Prince Caspian
+        "tt0499448"  // Voyage of the Dawn Treader
+      ],
+      "lord of the rings": [
+        "tt0120737", // Fellowship
+        "tt0167261", // Two Towers
+        "tt0167260", // Return of the King
+      ],
+      "the hobbit": [
+        "tt0903624", // Unexpected Journey
+        "tt1170358", // Desolation of Smaug
+        "tt2310332"  // Battle of the Five Armies
+      ],
+      "star wars": [
+        "tt0076759", // A New Hope
+        "tt0080684", // Empire Strikes Back
+        "tt0086190", // Return of the Jedi
+        "tt0120915", // Phantom Menace
+        "tt0121766", // Attack of the Clones
+        "tt0121765", // Revenge of the Sith
+        "tt2488496", // The Force Awakens
+        "tt2527336", // The Last Jedi
+        "tt2527338"  // The Rise of Skywalker
+      ],
+      "pirates of the caribbean": [
+        "tt0325980", // The Curse of the Black Pearl
+        "tt0383574", // Dead Man's Chest
+        "tt0449088", // At World's End
+        "tt1298650", // On Stranger Tides
+        "tt2118824"  // Dead Men Tell No Tales
+      ]
+    };
+
+    db.collection("watchlist").onSnapshot(snapshot => {
+      const movies = {};
+      const shows = {};
+      const seriesCount = {};
+
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const genreKey = (data.Genre?.split(',')[0] || "Other").trim();
+        const container = data.Type === "movie" ? movies : shows;
+        const series = data.seriesGroup || data.Title;
+        const capitalizedSeries = series.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+
+        container[genreKey] = container[genreKey] || {};
+        container[genreKey][capitalizedSeries] = container[genreKey][capitalizedSeries] || [];
+        container[genreKey][capitalizedSeries].push({ id: doc.id, ...data });
+
+        seriesCount[capitalizedSeries] = (seriesCount[capitalizedSeries] || 0) + 1;
+      });
+
+      renderGrouped(moviesColumn, movies, seriesCount);
+      renderGrouped(tvShowsColumn, shows, seriesCount);
+    });
+
+    function renderGrouped(column, data, seriesCount) {
+      column.innerHTML = `<h3>${column.id.includes("movie") ? "Movies" : "TV Shows"}</h3>`;
+      const genres = Object.keys(data).sort();
+      for (const genre of genres) {
+        const div = document.createElement("div");
+        div.className = "genre-group";
+        div.innerHTML = `<div class='genre-title'>${genre}</div>`;
+
+        const seriesGroups = data[genre];
+        for (const series in seriesGroups) {
+          const items = seriesGroups[series];
+
+          if (seriesCount[series] > 1) {
+            const seriesDiv = document.createElement("div");
+            seriesDiv.className = "series-group";
+            seriesDiv.textContent = series;
+
+            const seriesItems = document.createElement("div");
+            seriesItems.className = "series-items";
+
+            items.forEach(item => seriesItems.appendChild(renderItem(item)));
+
+            seriesDiv.onclick = () => {
+              seriesItems.style.display = seriesItems.style.display === 'none' ? 'block' : 'none';
+            };
+
+            div.appendChild(seriesDiv);
+            div.appendChild(seriesItems);
+          } else {
+            div.appendChild(renderItem(items[0]));
+          }
+        }
+        column.appendChild(div);
+      }
+    }
+
+    function renderItem(item) {
+      const itemEl = document.createElement("div");
+      itemEl.className = "item";
+      const trailerUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(item.Title + ' trailer')}`;
+      itemEl.innerHTML = `
+        <button class='remove-btn' onclick="removeMovie('${item.id}')">✕</button>
+        <h4>${item.Title}</h4>
+        <p><strong>Genre:</strong> ${item.Genre}</p>
+        <p><strong>Released:</strong> ${item.Released}</p>
+        <p><strong>Runtime:</strong> ${item.Runtime}</p>
+        <p>${item.Plot}</p>
+        <a href="${trailerUrl}" target="_blank" rel="noopener">Watch Trailer</a>
+        ${item.Poster !== "N/A" ? `<img src="${item.Poster}" class="poster">` : ''}
+        <div class="status-select">
+          <label>Status: 
+            <select onchange="updateStatus('${item.id}', this.value)">
+              <option value="notWatched" ${item.watchedStatus === 'notWatched' ? 'selected' : ''}>Not watched</option>
+              <option value="watchedMe" ${item.watchedStatus === 'watchedMe' ? 'selected' : ''}>Watched by me</option>
+              <option value="watchedTogether" ${item.watchedStatus === 'watchedTogether' ? 'selected' : ''}>Watched together</option>
+            </select>
+          </label>
+        </div>
+      `;
+      return itemEl;
+    }
+
+    async function addMovie() {
+      const query = movieInput.value.trim().toLowerCase();
+      statusEl.textContent = "";
+      if (!query) {
+        statusEl.textContent = "Please enter a movie or TV show name.";
+        return;
+      }
+
+      // Check if query matches a franchise:
+      if (franchises[query]) {
+        // Add all movies in the franchise by their IMDb IDs
+        if (!confirm(`Add entire "${capitalize(query)}" series (${franchises[query].length} movies) to your watchlist?`)) {
+          return;
+        }
+        for (const imdbID of franchises[query]) {
+          const exists = await db.collection("watchlist").where("imdbID", "==", imdbID).get();
+          if (!exists.empty) continue;
+
+          const detailRes = await fetch(`https://www.omdbapi.com/?i=${imdbID}&apikey=${apiKey}&plot=full`);
+          const details = await detailRes.json();
+
+          if (details.Response === "True") {
+            await db.collection("watchlist").add({
+              Title: details.Title,
+              Plot: details.Plot,
+              Runtime: details.Runtime,
+              Released: details.Released,
+              imdbID: details.imdbID,
+              Type: details.Type,
+              Poster: details.Poster,
+              Genre: details.Genre,
+              watchedStatus: 'notWatched',
+              addedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              seriesGroup: query
+            });
+          }
+        }
+        movieInput.value = "";
+        statusEl.textContent = `Added all "${capitalize(query)}" movies to your watchlist.`;
+        return;
+      }
+
+      // If not a known franchise, do normal search and add:
+      try {
+        let allResults = [];
+        let page = 1;
+        let totalResults = 0;
+
+        do {
+          const res = await fetch(`https://www.omdbapi.com/?s=${encodeURIComponent(query)}&apikey=${apiKey}&page=${page}`);
+          const data = await res.json();
+          if (!data.Search) break;
+          allResults = allResults.concat(data.Search);
+          totalResults = parseInt(data.totalResults) || allResults.length;
+          page++;
+        } while (allResults.length < totalResults && page <= 5);
+
+        if (allResults.length === 0) {
+          statusEl.textContent = `No results found for "${query}".`;
+          return;
+        }
+
+        if (!confirm(`Found ${allResults.length} results. Add all to your watchlist?`)) return;
+
+        for (const item of allResults) {
+          const exists = await db.collection("watchlist").where("imdbID", "==", item.imdbID).get();
+          if (!exists.empty) continue;
+
+          const detailRes = await fetch(`https://www.omdbapi.com/?i=${item.imdbID}&apikey=${apiKey}&plot=full`);
+          const details = await detailRes.json();
+
+          if (details.Response === "True") {
+            await db.collection("watchlist").add({
+              Title: details.Title,
+              Plot: details.Plot,
+              Runtime: details.Runtime,
+              Released: details.Released,
+              imdbID: details.imdbID,
+              Type: details.Type,
+              Poster: details.Poster,
+              Genre: details.Genre,
+              watchedStatus: 'notWatched',
+              addedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              seriesGroup: query
+            });
+          }
+        }
+        movieInput.value = "";
+        statusEl.textContent = "Added results to your watchlist.";
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = "Error adding movie.";
+      }
+    }
+
+    async function removeMovie(id) {
+      if (confirm("Remove this item?")) {
+        await db.collection("watchlist").doc(id).delete();
+      }
+    }
+
+    async function updateStatus(id, status) {
+      await db.collection("watchlist").doc(id).update({ watchedStatus: status });
+    }
+
+    function capitalize(str) {
+      return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+  </script>
+</body>
+</html>

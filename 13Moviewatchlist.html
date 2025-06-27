@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Our Little Movie & TV Show Watchlist</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fredericka+the+Great&family=Itim&family=Sarina&family=Coiny&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Itim', cursive;
+      margin: 0;
+      padding: 20px;
+      background: #121212;
+      color: #f0f0f0;
+    }
+    h2 {
+      text-align: center;
+      font-family: 'Fredericka the Great', cursive;
+      font-size: 2em;
+      margin-bottom: 20px;
+    }
+    .controls {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    input[type=text] {
+      padding: 8px;
+      font-size: 16px;
+      width: 60%;
+    }
+    button {
+      padding: 8px 16px;
+      font-size: 16px;
+      margin-left: 5px;
+    }
+    .library {
+      display: flex;
+      gap: 20px;
+    }
+    .column {
+      flex: 1;
+      max-height: 600px;
+      overflow-y: auto;
+      background: #1e1e1e;
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    }
+    .column h3 {
+      text-align: center;
+      font-family: 'Sarina', cursive;
+      font-size: 1.5em;
+      margin-top: 0;
+    }
+    .item {
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+      background-color: #2a2a2a;
+    }
+    .item h4 {
+      font-family: 'Coiny', cursive;
+      font-size: 1.3em;
+      margin: 0 0 10px 0;
+    }
+    .poster {
+      width: 100%;
+      max-width: 150px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+    }
+    .remove-btn {
+      float: right;
+      background: #c0392b;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .status-select {
+      margin-top: 10px;
+    }
+    .export-btn {
+      margin-top: 20px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h2>🎞️Our Little Movie & TV Show Watchlist❤️</h2>
+  <div class="controls">
+    <input type="text" id="movieInput" placeholder="Enter a series, movie, or TV show...">
+    <button onclick="addMovie()">Add to Watchlist</button>
+    <p id="status" style="color:#ff4c4c;"></p>
+  </div>
+  <div class="library">
+    <div class="column" id="moviesColumn">
+      <h3>Movies🎬</h3>
+    </div>
+    <div class="column" id="tvShowsColumn">
+      <h3>TV Shows📺</h3>
+    </div>
+  </div>
+  <div class="export-btn">
+    <button onclick="exportWatchlist()">📤 Export Watchlist</button>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBauOe7P5HU5ng2UaXGTsULkPrxYIgHSOc",
+      authDomain: "movie-watchlist-36d57.firebaseapp.com",
+      projectId: "movie-watchlist-36d57",
+      storageBucket: "movie-watchlist-36d57.appspot.com",
+      messagingSenderId: "338935572505",
+      appId: "1:338935572505:web:1f162c7cf58a8e6e28a288",
+      measurementId: "G-LT6MX3W7P0"
+    };
+    firebase.initializeApp(firebaseConfig);
+    firebase.firestore().enablePersistence().catch(console.error);
+    const db = firebase.firestore();
+    const apiKey = "95dea636";
+
+    const movieInput = document.getElementById("movieInput");
+    const moviesColumn = document.getElementById("moviesColumn");
+    const tvShowsColumn = document.getElementById("tvShowsColumn");
+    const statusEl = document.getElementById("status");
+
+    db.collection("watchlist").onSnapshot(snapshot => {
+      const movies = [];
+      const shows = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const item = { id: doc.id, ...data };
+        if (data.Type === "movie") movies.push(item);
+        else if (data.Type === "series") shows.push(item);
+      });
+
+      renderItems(moviesColumn, movies.sort((a, b) => a.Title.localeCompare(b.Title)));
+      renderItems(tvShowsColumn, shows.sort((a, b) => a.Title.localeCompare(b.Title)));
+    });
+
+    function renderItems(column, items) {
+      column.innerHTML = `<h3>${column.id.includes("movie") ? "Movies🎬" : "TV Shows📺"}</h3>`;
+      items.forEach(item => {
+        const div = document.createElement("div");
+        div.className = "item";
+        const trailerUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(item.Title + ' trailer')}`;
+        div.innerHTML = `
+          <button class='remove-btn' onclick="removeMovie('${item.id}')">✕</button>
+          <h4>${item.Title}</h4>
+          <p><strong>Genre:</strong> ${item.Genre}</p>
+          <p><strong>Released:</strong> ${item.Released}</p>
+          ${item.Type === 'movie' ? `<p><strong>Runtime:</strong> ${item.Runtime}</p>` : ''}
+          <p>${item.Plot}</p>
+          <a href="${trailerUrl}" target="_blank">Watch Trailer</a>
+          ${item.Poster !== "N/A" ? `<img src="${item.Poster}" class="poster">` : ''}
+          <div class="status-select">
+            <label>Status: 
+              <select onchange="updateStatus('${item.id}', this.value)">
+                <option value="notWatched" ${item.watchedStatus === 'notWatched' ? 'selected' : ''}>Not watched</option>
+                <option value="watchedMe" ${item.watchedStatus === 'watchedMe' ? 'selected' : ''}>Watched by me</option>
+                <option value="watchedTogether" ${item.watchedStatus === 'watchedTogether' ? 'selected' : ''}>Watched together</option>
+              </select>
+            </label>
+          </div>
+        `;
+        column.appendChild(div);
+      });
+    }
+
+    async function addMovie() {
+      const query = movieInput.value.trim();
+      statusEl.textContent = "";
+      if (!query) return;
+
+      try {
+        let allResults = [];
+        let page = 1;
+        let totalResults = 0;
+
+        do {
+          const res = await fetch(`https://www.omdbapi.com/?s=${encodeURIComponent(query)}&apikey=${apiKey}&page=${page}`);
+          const data = await res.json();
+          if (!data.Search) break;
+          allResults = allResults.concat(data.Search);
+          totalResults = parseInt(data.totalResults) || allResults.length;
+          page++;
+        } while (allResults.length < totalResults && page <= 5);
+
+        const confirmAdd = confirm(`Found ${allResults.length} results. Add all to your watchlist?`);
+        if (!confirmAdd) return;
+
+        for (const item of allResults) {
+          const exists = await db.collection("watchlist").where("imdbID", "==", item.imdbID).get();
+          if (!exists.empty) continue;
+
+          const detailRes = await fetch(`https://www.omdbapi.com/?i=${item.imdbID}&apikey=${apiKey}&plot=full`);
+          const details = await detailRes.json();
+
+          if (details.Response === "True") {
+            await db.collection("watchlist").add({
+              Title: details.Title,
+              Plot: details.Plot,
+              Runtime: details.Runtime,
+              Released: details.Released,
+              imdbID: details.imdbID,
+              Type: details.Type,
+              Poster: details.Poster,
+              Genre: details.Genre,
+              watchedStatus: 'notWatched',
+              addedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+          }
+        }
+
+        movieInput.value = "";
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = "Error adding movie.";
+      }
+    }
+
+    async function removeMovie(id) {
+      if (confirm("Remove this item?")) {
+        await db.collection("watchlist").doc(id).delete();
+      }
+    }
+
+    async function updateStatus(id, status) {
+      await db.collection("watchlist").doc(id).update({ watchedStatus: status });
+    }
+
+    async function exportWatchlist() {
+      const snapshot = await db.collection("watchlist").get();
+      const items = snapshot.docs.map(doc => doc.data());
+      const json = JSON.stringify(items, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "watchlist.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>
